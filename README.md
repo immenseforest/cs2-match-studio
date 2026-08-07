@@ -32,7 +32,9 @@ The bundled `.dem.zst` file is loaded automatically. You can upload a `.dem` or 
 - Player scoreboard with K/D, total damage, and headshot percentage
 - Searchable event log and action-frequency chart
 - Collision-aware player labels with movement trails, view direction, and compact health values
+- Enlarged replay with button/wheel zoom, reset, and drag-to-pan navigation
 - On-map action badges for shots, grenade throws/detonations, fire, hits, kills, flashes, and bomb actions
+- Frame-synchronized team economy showing health, armour, cash, active weapon, and equipment value
 - Asynchronous parsing with stage-by-stage progress and a visible percentage bar
 - Round selection, scrubbing, playback speed, and exact event overlays
 - One-click GIF and H.264 MP4 export

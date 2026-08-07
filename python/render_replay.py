@@ -201,7 +201,7 @@ def main() -> None:
                 pos = player_points[str(player.name)][0]
                 alive = bool(player.is_alive) and float(player.health or 0) > 0
                 color = TEAM.get(int(player.team_num), MUTED) if alive else "#555555"
-                radius = 9 if alive else 6
+                radius = 6 if alive else 4
                 draw.ellipse((pos[0]-radius,pos[1]-radius,pos[0]+radius,pos[1]+radius), fill=color, outline="white" if alive else "#8a8a8a", width=2)
                 if alive:
                     alive_labels.append((player,pos,color))

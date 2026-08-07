@@ -50,7 +50,7 @@ ui <- fluidPage(
           tags$p(class="app-subtitle", textOutput("match_subtitle", inline = TRUE))),
       div(class="team-legend", tags$span(tags$i(class="dot ct"), "Counter-Terrorists"), tags$span(tags$i(class="dot t"), "Terrorists"))),
   fluidRow(
-    column(3, div(class="card control-card",
+    column(3, class="sidebar-column", div(class="card control-card",
       fileInput("demo", "Demo file", accept = c(".dem", ".zst", ".dem.zst")),
       sliderInput("parse_fps", "Replay detail (frames/sec)", 4, 16, 8, 2),
       actionButton("parse", "Parse demo", class="btn-primary w-100"),
@@ -60,7 +60,7 @@ ui <- fluidPage(
       tags$small(class="text-muted d-block mt-3", "Parsing is cached by file hash. Exports use the same replay state shown here."),
       tags$div(class="mt-3", textOutput("status"))
     )),
-    column(9,
+    column(9, class="main-column",
       uiOutput("kpis"),
       navs_tab(
         id="main_tab",
@@ -72,12 +72,17 @@ ui <- fluidPage(
               tags$input(id="replay-seek", type="range", min="0", max="0", value="0"),
               tags$select(id="replay-level", `aria-label`="Map level", tags$option(value="auto", "Auto level"), tags$option(value="upper", "Upper"), tags$option(value="lower", "Lower")),
               tags$select(id="replay-speed", `aria-label`="Playback speed", tags$option(value="0.5", "0.5×"), tags$option(value="1", selected=NA, "1×"), tags$option(value="2", "2×"), tags$option(value="4", "4×")),
+              div(class="zoom-controls", tags$button(id="replay-zoom-out", type="button", `aria-label`="Zoom out", "−"), tags$button(id="replay-zoom-reset", type="button", "100%"), tags$button(id="replay-zoom-in", type="button", `aria-label`="Zoom in", "+")),
               tags$span(id="replay-time", "0.0s")
             )),
-          div(class="event-panel", tags$h4("Live action feed"), tags$p(class="event-help", "Map badges mark shots, throws, utility, damage, and objective actions."), tags$div(id="event-feed", class="empty-feed", "Load a round to begin"))
+          div(class="event-panel", tags$h4("Live action feed"), tags$p(class="event-help", "Map badges mark shots, throws, utility, damage, and objective actions."), tags$div(id="event-feed", class="empty-feed", "Load a round to begin")),
+          div(class="live-scoreboard-shell",
+            div(class="live-scoreboard-heading", div(tags$h4("Live economy & equipment"), tags$p("Updates with the current replay frame.")), tags$span(id="scoreboard-clock", "0.0s")),
+            div(id="live-scoreboard", class="empty-scoreboard", "Load a round to view player equipment")
+          )
         )),
         nav("Scoreboard", div(class="card", div(class="card-header", "Player performance"), div(class="p-3", DTOutput("scoreboard")))),
-        nav("Round analysis", fluidRow(column(6, div(class="card", plotlyOutput("round_chart", height="430px"))), column(6, div(class="card", plotlyOutput("event_chart", height="430px"))))),
+        nav("Round analysis", fluidRow(column(6, div(class="card", plotlyOutput("round_chart", height="520px"))), column(6, div(class="card", plotlyOutput("event_chart", height="520px"))))),
         nav("Event log", div(class="card", div(class="p-3", DTOutput("events_table"))))
       )
     )
@@ -200,7 +205,11 @@ server <- function(input, output, session) {
     split_ticks <- base::split.data.frame(as.data.frame(ticks), f = ticks$tick)
     frames <- unname(lapply(split_ticks, function(x) list(
       tick=as.integer(x$tick[1]), time=(as.integer(x$tick[1])-r$start_tick)/64,
-      players=lapply(seq_len(nrow(x)), function(i) list(name=x$name[i], X=x$X[i], Y=x$Y[i], Z=x$Z[i], yaw=x$yaw[i], health=x$health[i], is_alive=isTRUE(x$is_alive[i]), team_num=x$team_num[i], weapon=x$active_weapon_name[i]))
+      players=lapply(seq_len(nrow(x)), function(i) list(
+        name=x$name[i], X=x$X[i], Y=x$Y[i], Z=x$Z[i], yaw=x$yaw[i], health=x$health[i], armor=x$armor_value[i],
+        is_alive=isTRUE(x$is_alive[i]), team_num=x$team_num[i], team_name=x$team_name[i], weapon=x$active_weapon_name[i],
+        balance=x$balance[i], equip_value=x$current_equip_value[i]
+      ))
     )))
     ev <- d$events[d$events$round_id == selected_round]
     events <- lapply(seq_len(nrow(ev)), function(i) list(

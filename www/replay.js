@@ -2,7 +2,8 @@
   const state = {
     frames: [], events: [], bounds: null, map: null, mapImage: null,
     lowerImage: null, index: 0, playing: false, fps: 8, speed: 1,
-    last: 0, trails: new Map(), round: null, level: "auto"
+    last: 0, trails: new Map(), round: null, level: "auto",
+    zoom: 1, panX: 0, panY: 0, drag: null
   };
 
   const colors = {2: "#ffc857", 3: "#4cc9ff"};
@@ -24,6 +25,27 @@
     $("replay-speed").onchange = e => state.speed = Number(e.target.value);
     $("replay-level").onchange = e => { state.level = e.target.value; draw(); };
     $("replay-seek").oninput = e => seek(Number(e.target.value));
+    $("replay-zoom-out").onclick = () => setZoom(state.zoom - .25);
+    $("replay-zoom-in").onclick = () => setZoom(state.zoom + .25);
+    $("replay-zoom-reset").onclick = () => { state.zoom=1; state.panX=0; state.panY=0; updateZoomUI(); draw(); };
+    canvas.addEventListener("wheel", event => {
+      if (!state.frames.length) return;
+      event.preventDefault();
+      const rect=canvas.getBoundingClientRect();
+      setZoom(state.zoom+(event.deltaY<0?.2:-.2),event.clientX-rect.left,event.clientY-rect.top);
+    },{passive:false});
+    canvas.addEventListener("pointerdown", event => {
+      if(state.zoom<=1)return;
+      state.drag={x:event.clientX,y:event.clientY,panX:state.panX,panY:state.panY};
+      canvas.setPointerCapture(event.pointerId);canvas.classList.add("is-panning");
+    });
+    canvas.addEventListener("pointermove", event => {
+      if(!state.drag)return;
+      state.panX=state.drag.panX+event.clientX-state.drag.x;state.panY=state.drag.panY+event.clientY-state.drag.y;
+      constrainPan();draw();
+    });
+    const stopPan=()=>{state.drag=null;canvas.classList.remove("is-panning");};
+    canvas.addEventListener("pointerup",stopPan);canvas.addEventListener("pointercancel",stopPan);
     draw();
     requestAnimationFrame(loop);
   }
@@ -52,12 +74,36 @@
     return {x: (width - size) / 2, y: (height - size) / 2, size};
   }
 
+  function viewPoint(point,width,height) {
+    return [width/2+(point[0]-width/2)*state.zoom+state.panX,height/2+(point[1]-height/2)*state.zoom+state.panY];
+  }
+
+  function constrainPan() {
+    const canvas=$("replay-canvas"),rect=canvas?.getBoundingClientRect();if(!rect)return;
+    const limit=Math.max(0,(Math.min(rect.width,rect.height)-20)*(state.zoom-1)/2+80);
+    state.panX=Math.max(-limit,Math.min(limit,state.panX));state.panY=Math.max(-limit,Math.min(limit,state.panY));
+  }
+
+  function updateZoomUI() {
+    const button=$("replay-zoom-reset");if(button)button.textContent=`${Math.round(state.zoom*100)}%`;
+    const canvas=$("replay-canvas");if(canvas)canvas.classList.toggle("can-pan",state.zoom>1);
+  }
+
+  function setZoom(value,anchorX=null,anchorY=null) {
+    const canvas=$("replay-canvas"),rect=canvas?.getBoundingClientRect();if(!rect)return;
+    const next=Math.max(1,Math.min(3,Math.round(value*100)/100));
+    const x=anchorX??rect.width/2,y=anchorY??rect.height/2,ratio=next/state.zoom;
+    state.panX=x-rect.width/2-(x-rect.width/2-state.panX)*ratio;
+    state.panY=y-rect.height/2-(y-rect.height/2-state.panY)*ratio;
+    state.zoom=next;if(next===1){state.panX=0;state.panY=0;}constrainPan();updateZoomUI();draw();
+  }
+
   function transform(x, y, width, height) {
     if (state.map && Number.isFinite(Number(state.map.scale))) {
       const box = mapBox(width, height);
       const px = (Number(x) - Number(state.map.pos_x)) / Number(state.map.scale);
       const py = (Number(state.map.pos_y) - Number(y)) / Number(state.map.scale);
-      return [box.x + px * box.size / 1024, box.y + py * box.size / 1024];
+      return viewPoint([box.x + px * box.size / 1024, box.y + py * box.size / 1024],width,height);
     }
     const b = state.bounds, pad = 34;
     if (!b) return [width / 2, height / 2];
@@ -65,7 +111,7 @@
     const scale = Math.min((width - 2*pad)/dx, (height - 2*pad)/dy);
     const ox = pad + ((width - 2*pad) - dx*scale)/2;
     const oy = pad + ((height - 2*pad) - dy*scale)/2;
-    return [ox + (x-b.xmin)*scale, height - oy - (y-b.ymin)*scale];
+    return viewPoint([ox + (x-b.xmin)*scale, height - oy - (y-b.ymin)*scale],width,height);
   }
 
   function useLowerLevel(frame) {
@@ -104,15 +150,18 @@
     const chosen = useLowerLevel(frame) ? state.lowerImage : state.mapImage;
     if (chosen && chosen.complete && chosen.naturalWidth) {
       const box = mapBox(width, height);
-      ctx.drawImage(chosen, box.x, box.y, box.size, box.size);
-      ctx.fillStyle = "rgba(0, 0, 0, .14)"; ctx.fillRect(box.x, box.y, box.size, box.size);
-      ctx.strokeStyle = "#616161"; ctx.strokeRect(box.x, box.y, box.size, box.size);
+      const topLeft=viewPoint([box.x,box.y],width,height),size=box.size*state.zoom;
+      ctx.drawImage(chosen, topLeft[0], topLeft[1], size, size);
+      ctx.fillStyle = "rgba(0, 0, 0, .14)"; ctx.fillRect(topLeft[0], topLeft[1], size, size);
+      ctx.strokeStyle = "#616161"; ctx.strokeRect(topLeft[0], topLeft[1], size, size);
       return;
     }
     ctx.strokeStyle = "#353535"; ctx.lineWidth = 1;
     for (let i=1; i<9; i++) {
-      ctx.beginPath(); ctx.moveTo(i*width/9,0); ctx.lineTo(i*width/9,height); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0,i*height/9); ctx.lineTo(width,i*height/9); ctx.stroke();
+      const vx1=viewPoint([i*width/9,0],width,height),vx2=viewPoint([i*width/9,height],width,height);
+      const hy1=viewPoint([0,i*height/9],width,height),hy2=viewPoint([width,i*height/9],width,height);
+      ctx.beginPath();ctx.moveTo(vx1[0],vx1[1]);ctx.lineTo(vx2[0],vx2[1]);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(hy1[0],hy1[1]);ctx.lineTo(hy2[0],hy2[1]);ctx.stroke();
     }
   }
 
@@ -236,11 +285,11 @@
       const c=alive?(colors[p.team_num]||"#bdbdbd"):"#8a8a8a";
       const rad=(Number(p.yaw)||0)*Math.PI/180;
       if(alive){
-        ctx.strokeStyle="rgba(0,0,0,.9)";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(q[0],q[1]);ctx.lineTo(q[0]+20*Math.cos(rad),q[1]-20*Math.sin(rad));ctx.stroke();
-        ctx.strokeStyle=c;ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(q[0],q[1]);ctx.lineTo(q[0]+20*Math.cos(rad),q[1]-20*Math.sin(rad));ctx.stroke();
+        ctx.strokeStyle="rgba(0,0,0,.9)";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(q[0],q[1]);ctx.lineTo(q[0]+15*Math.cos(rad),q[1]-15*Math.sin(rad));ctx.stroke();
+        ctx.strokeStyle=c;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(q[0],q[1]);ctx.lineTo(q[0]+15*Math.cos(rad),q[1]-15*Math.sin(rad));ctx.stroke();
       }
-      ctx.fillStyle=alive?c:"#262626";ctx.strokeStyle=alive?"#fff":"#8a8a8a";ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(q[0],q[1],alive?9:6,0,Math.PI*2);ctx.fill();ctx.stroke();
-      if(!alive){ctx.strokeStyle="#d0d0d0";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(q[0]-3,q[1]-3);ctx.lineTo(q[0]+3,q[1]+3);ctx.moveTo(q[0]+3,q[1]-3);ctx.lineTo(q[0]-3,q[1]+3);ctx.stroke();}
+      ctx.fillStyle=alive?c:"#262626";ctx.strokeStyle=alive?"#fff":"#8a8a8a";ctx.lineWidth=2;ctx.beginPath();ctx.arc(q[0],q[1],alive?6:4,0,Math.PI*2);ctx.fill();ctx.stroke();
+      if(!alive){ctx.strokeStyle="#d0d0d0";ctx.lineWidth=1.25;ctx.beginPath();ctx.moveTo(q[0]-2,q[1]-2);ctx.lineTo(q[0]+2,q[1]+2);ctx.moveTo(q[0]+2,q[1]-2);ctx.lineTo(q[0]-2,q[1]+2);ctx.stroke();}
     });
     drawPlayerLabels(ctx,frame.players,width,height);
   }
@@ -266,6 +315,43 @@
     }).join("")||'<div class="empty-feed">No recent actions</div>';
   }
 
+  function money(value) {
+    return `$${Math.max(0,Math.round(Number(value)||0)).toLocaleString()}`;
+  }
+
+  function displayWeapon(value) {
+    const weapon=cleanWeapon(value);
+    return weapon.replace(/\b\w/g,letter=>letter.toUpperCase());
+  }
+
+  function renderScoreboard(frame) {
+    const board=$("live-scoreboard");if(!board||board.dataset.tick===String(frame.tick))return;
+    board.dataset.tick=String(frame.tick);
+    const teams=[{num:3,label:"Counter-Terrorists",short:"CT"},{num:2,label:"Terrorists",short:"T"}];
+    board.innerHTML=teams.map(team=>{
+      const players=frame.players.filter(player=>Number(player.team_num)===team.num).sort((a,b)=>(Number(b.is_alive)-Number(a.is_alive))||(Number(b.equip_value)-Number(a.equip_value)));
+      const alive=players.filter(player=>player.is_alive&&Number(player.health)>0).length;
+      const totalCash=players.reduce((sum,player)=>sum+(Number(player.balance)||0),0);
+      const totalEquip=players.reduce((sum,player)=>sum+(Number(player.equip_value)||0),0);
+      const rows=players.map(player=>{
+        const isAlive=player.is_alive&&Number(player.health)>0;
+        return `<div class="scoreboard-row ${isAlive?"":"eliminated"}">
+          <div class="score-player"><span class="score-team-code ${team.short.toLowerCase()}">${team.short}</span><strong title="${esc(player.name)}">${esc(shortName(player.name))}</strong></div>
+          <div><strong>${isAlive?Math.max(0,Math.round(Number(player.health)||0)):"OUT"}</strong><small>${Math.max(0,Math.round(Number(player.armor)||0))} armour</small></div>
+          <div><strong>${money(player.balance)}</strong><small>cash</small></div>
+          <div><strong title="${esc(displayWeapon(player.weapon))}">${esc(displayWeapon(player.weapon))}</strong><small>active weapon</small></div>
+          <div><strong>${money(player.equip_value)}</strong><small>kit value</small></div>
+        </div>`;
+      }).join("");
+      return `<section class="team-scoreboard ${team.short.toLowerCase()}">
+        <div class="team-scoreboard-title"><strong>${team.label}</strong><span>${alive}/${players.length} alive · ${money(totalCash)} cash · ${money(totalEquip)} equipment</span></div>
+        <div class="scoreboard-row scoreboard-columns"><span>Player</span><span>Health</span><span>Money</span><span>Equipment</span><span>Value</span></div>
+        ${rows}
+      </section>`;
+    }).join("");
+    $("scoreboard-clock").textContent=`${frame.time.toFixed(1)}s · tick ${frame.tick}`;
+  }
+
   function draw() {
     const canvas=$("replay-canvas");if(!canvas)return;
     const dpr=window.devicePixelRatio||1,rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;
@@ -278,7 +364,7 @@
       ctx.strokeStyle=colors[p.team_num]||"#bdcad9";ctx.globalAlpha=.42;ctx.lineWidth=2.5;ctx.beginPath();
       trail.forEach((xyz,i)=>{const q=transform(xyz[0],xyz[1],w,h);i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);});ctx.stroke();ctx.globalAlpha=1;
     });
-    drawActions(ctx,frame,w,h);drawPlayers(ctx,frame,w,h);
+    drawActions(ctx,frame,w,h);drawPlayers(ctx,frame,w,h);renderScoreboard(frame);
     $("replay-seek").value=state.index;$("replay-time").textContent=`${frame.time.toFixed(1)}s  •  tick ${frame.tick}`;
     const lower=useLowerLevel(frame);$("replay-map-badge").textContent=`${state.map?.name||"Map"}${state.lowerImage?` • ${lower?"Lower":"Upper"}`:""}`;
     renderFeed(frame);
@@ -293,10 +379,10 @@
   }
 
   Shiny.addCustomMessageHandler("loadReplay",data=>{
-    setup();state.frames=data.frames||[];state.events=data.events||[];state.bounds=data.bounds;state.map=data.map||null;state.fps=data.fps||8;state.round=data.round;state.index=0;state.playing=false;state.trails.clear();state.level="auto";
+    setup();state.frames=data.frames||[];state.events=data.events||[];state.bounds=data.bounds;state.map=data.map||null;state.fps=data.fps||8;state.round=data.round;state.index=0;state.playing=false;state.trails.clear();state.level="auto";state.zoom=1;state.panX=0;state.panY=0;updateZoomUI();
     $("replay-seek").max=Math.max(0,state.frames.length-1);$("replay-seek").value=0;$("replay-play").textContent="Play";$("replay-level").value="auto";
     loadImage(state.map?.image,"mapImage");loadImage(state.map?.lower_image,"lowerImage");$("replay-level").style.display=state.map?.lower_image?"inline-block":"none";
-    $("replay-map-badge").textContent=state.map?.image?state.map.name:`${state.map?.name||"Map"} • coordinate view`;updateTrails(state.frames[0]);draw();
+    $("replay-map-badge").textContent=state.map?.image?state.map.name:`${state.map?.name||"Map"} • coordinate view`;const board=$("live-scoreboard");if(board)board.dataset.tick="";updateTrails(state.frames[0]);draw();
   });
 
   Shiny.addCustomMessageHandler("parsingState",data=>{
