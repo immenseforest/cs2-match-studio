@@ -13,6 +13,7 @@ import zstandard as zstd
 from demoparser2 import DemoParser
 
 
+CACHE_VERSION = 2
 TICK_PROPS = [
     "X", "Y", "Z", "yaw", "health", "armor_value", "is_alive",
     "team_num", "team_name", "active_weapon_name", "balance",
@@ -25,6 +26,12 @@ EVENTS = [
     "hegrenade_detonate", "flashbang_detonate", "smokegrenade_detonate",
     "decoy_detonate", "inferno_startburn", "player_blind",
 ]
+
+
+def write_progress(output: Path, value: int, stage: str) -> None:
+    """Publish parser progress; readers tolerate a partially written poll."""
+    payload = {"value": max(0, min(100, int(value))), "stage": stage}
+    (output / "progress.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
 def materialize(source: Path, cache_dir: Path) -> Path:
@@ -107,9 +114,31 @@ def normalize_events(frames: list[pd.DataFrame], rounds: pd.DataFrame) -> pd.Dat
         out["y"] = pd.to_numeric(first_present(f, ["attacker_Y", "user_Y", "player_Y", "Y"], math.nan), errors="coerce")
         out["damage"] = pd.to_numeric(first_present(f, ["dmg_health"], math.nan), errors="coerce")
         out["headshot"] = first_present(f, ["headshot"], False).fillna(False).astype(bool)
+        actor = out["actor"].fillna("Player")
+        target = out["target"].fillna("player")
+        weapon = out["weapon"].fillna("").str.replace(r"^weapon_", "", regex=True).str.replace("_", " ")
         out["label"] = out["event_name"].str.replace("_", " ")
+        fired = out["event_name"].eq("weapon_fire")
+        out.loc[fired, "label"] = actor[fired] + " fired " + weapon[fired]
+        utility_fired = fired & weapon.str.contains("grenade|flashbang|molotov|incendiary|decoy", case=False, na=False)
+        out.loc[utility_fired, "label"] = actor[utility_fired] + " threw " + weapon[utility_fired]
+        thrown = out["event_name"].eq("grenade_thrown")
+        out.loc[thrown, "label"] = actor[thrown] + " threw " + weapon[thrown]
+        hurt = out["event_name"].eq("player_hurt")
+        damage = out["damage"].fillna(0).astype(int).astype(str)
+        out.loc[hurt, "label"] = actor[hurt] + " hit " + target[hurt] + " for " + damage[hurt]
         death = out["event_name"].eq("player_death")
         out.loc[death, "label"] = out.loc[death, "actor"].fillna("?") + " eliminated " + out.loc[death, "target"].fillna("?")
+        objective_labels = {
+            "bomb_planted": " planted the bomb",
+            "bomb_defused": " defused the bomb",
+            "bomb_dropped": " dropped the bomb",
+            "bomb_pickup": " picked up the bomb",
+            "bomb_exploded": " — bomb exploded",
+        }
+        for event_name, suffix in objective_labels.items():
+            mask = out["event_name"].eq(event_name)
+            out.loc[mask, "label"] = actor[mask] + suffix
         rows.append(out)
     if not rows:
         return pd.DataFrame(columns=["event_name", "tick", "round_id", "actor", "target", "weapon", "x", "y", "damage", "headshot", "label"])
@@ -139,34 +168,46 @@ def main() -> None:
     args = ap.parse_args()
     source, output = Path(args.demo).resolve(), Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
+    write_progress(output, 3, "Preparing uploaded demo")
     demo = materialize(source, output)
+    write_progress(output, 12, "Opening demo header")
     parser = DemoParser(str(demo))
     header = parser.parse_header()
+    write_progress(output, 22, "Indexing rounds")
     rounds = round_table(parser)
+    write_progress(output, 38, "Reading player movement")
     raw_ticks = parser.parse_ticks(TICK_PROPS)
     raw_ticks["round_id"] = assign_round(raw_ticks["tick"], rounds)
     raw_ticks = raw_ticks.dropna(subset=["round_id", "X", "Y", "name"])
     raw_ticks["round_id"] = raw_ticks["round_id"].astype(int)
+    write_progress(output, 60, "Sampling replay frames")
     stride = max(1, round(64 / max(1, args.fps)))
     raw_ticks = raw_ticks[(raw_ticks["tick"] % stride == 0) | raw_ticks["tick"].isin(rounds.start_tick)]
     raw_ticks = raw_ticks.sort_values(["round_id", "tick", "name"])
-    frames = [safe_event(parser, event) for event in EVENTS]
+    frames = []
+    for index, event in enumerate(EVENTS):
+        progress = 66 + round(18 * index / max(1, len(EVENTS) - 1))
+        write_progress(output, progress, f"Reading actions: {event.replace('_', ' ')}")
+        frames.append(safe_event(parser, event))
     events = normalize_events(frames, rounds)
+    write_progress(output, 88, "Building player summaries")
     players = player_summary(events, raw_ticks)
     bounds = {
         "xmin": float(raw_ticks.X.quantile(0.005)), "xmax": float(raw_ticks.X.quantile(0.995)),
         "ymin": float(raw_ticks.Y.quantile(0.005)), "ymax": float(raw_ticks.Y.quantile(0.995)),
     }
     metadata = {
-        **header, "source_file": source.name, "source_bytes": source.stat().st_size,
+        **header, "cache_version": CACHE_VERSION, "source_file": source.name, "source_bytes": source.stat().st_size,
         "sha256": hashlib.sha256(source.read_bytes()).hexdigest(), "visual_fps": args.fps,
         "tick_rate": 64, "round_count": int(len(rounds)), "bounds": bounds,
     }
+    write_progress(output, 94, "Writing replay cache")
     rounds.to_csv(output / "rounds.csv", index=False)
     raw_ticks.to_csv(output / "ticks.csv", index=False)
     events.to_csv(output / "events.csv", index=False)
     players.to_csv(output / "players.csv", index=False)
     (output / "metadata.json").write_text(json.dumps(metadata, indent=2, default=str), encoding="utf-8")
+    write_progress(output, 100, "Replay ready")
     print(json.dumps({"status": "ok", "output": str(output), "rows": len(raw_ticks), "events": len(events), "rounds": len(rounds)}))
 
 

@@ -24,14 +24,16 @@ Shiny owns the interface, analysis, tables, and charts. The Source 2 binary pars
 
    `shiny::runApp()`
 
-The bundled `.dem.zst` file is loaded automatically. You can upload a `.dem` or `.dem.zst` file up to 1 GB. The first parse creates a `cache/<file-hash>/` directory; reopening the same demo uses the cached results.
+The bundled `.dem.zst` file is loaded automatically. You can upload a `.dem` or `.dem.zst` file up to 1 GB. The first parse creates a versioned cache for that file and replay frame rate; reopening the same demo uses the cached results.
 
 ## Features
 
 - Match score, headshot rate, eliminations, map, and round outcomes
 - Player scoreboard with K/D, total damage, and headshot percentage
 - Searchable event log and action-frequency chart
-- Canvas-based replay with movement trails, view direction, health, weapons, and a live action feed
+- Collision-aware player labels with movement trails, view direction, and compact health values
+- On-map action badges for shots, grenade throws/detonations, fire, hits, kills, flashes, and bomb actions
+- Asynchronous parsing with stage-by-stage progress and a visible percentage bar
 - Round selection, scrubbing, playback speed, and exact event overlays
 - One-click GIF and H.264 MP4 export
 
@@ -39,7 +41,7 @@ The bundled `.dem.zst` file is loaded automatically. You can upload a `.dem` or 
 
 - The parser currently assumes a 64 Hz CS2 demo clock for replay timing.
 - Some new CS2 patches or unusual POV/community-server demos can temporarily expose upstream parser incompatibilities. The original demo is never modified.
-- A radar-image layer can be added later; the current coordinate view is map-agnostic and works without external map assets.
+- Bundled calibrated radar layouts cover the standard CS2 maps; unsupported maps use the coordinate fallback.
 
 ## Posit Connect Cloud
 

@@ -9,6 +9,7 @@ suppressPackageStartupMessages({
 
 options(shiny.maxRequestSize = 1024^3)
 root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+cache_version <- 2L
 map_data_file <- file.path(root, "www", "maps", "map-data.json")
 map_data <- if (file.exists(map_data_file)) fromJSON(map_data_file, simplifyVector = FALSE) else list()
 dir.create(file.path(root, "cache", "sass"), recursive = TRUE, showWarnings = FALSE)
@@ -33,18 +34,9 @@ read_cache <- function(path) {
   )
 }
 
-parse_demo <- function(source, fps = 8L) {
+cache_path_for <- function(source, fps) {
   key <- unname(tools::md5sum(source))
-  out <- file.path(root, "cache", key)
-  if (!file.exists(file.path(out, "metadata.json"))) {
-    dir.create(out, recursive = TRUE, showWarnings = FALSE)
-    result <- system2(python_bin, c(
-      shQuote(file.path(root, "python", "parse_demo.py")), shQuote(source),
-      shQuote(out), "--fps", as.integer(fps)
-    ), stdout = TRUE, stderr = TRUE)
-    if (!file.exists(file.path(out, "metadata.json"))) stop(paste(result, collapse = "\n"))
-  }
-  read_cache(out)
+  file.path(root, "cache", sprintf("%s-f%s-v%s", key, as.integer(fps), cache_version))
 }
 
 initial_demo <- list.files(root, pattern = "\\.dem(\\.zst)?$", full.names = TRUE, ignore.case = TRUE)[1]
@@ -62,6 +54,7 @@ ui <- fluidPage(
       fileInput("demo", "Demo file", accept = c(".dem", ".zst", ".dem.zst")),
       sliderInput("parse_fps", "Replay detail (frames/sec)", 4, 16, 8, 2),
       actionButton("parse", "Parse demo", class="btn-primary w-100"),
+      uiOutput("parse_progress"),
       tags$hr(), selectInput("round", "Round", choices = NULL),
       tags$div(class="d-grid gap-2", downloadButton("download_gif", "Export round GIF", class="btn-secondary"), downloadButton("download_mp4", "Export round MP4", class="btn-secondary")),
       tags$small(class="text-muted d-block mt-3", "Parsing is cached by file hash. Exports use the same replay state shown here."),
@@ -81,7 +74,7 @@ ui <- fluidPage(
               tags$select(id="replay-speed", `aria-label`="Playback speed", tags$option(value="0.5", "0.5×"), tags$option(value="1", selected=NA, "1×"), tags$option(value="2", "2×"), tags$option(value="4", "4×")),
               tags$span(id="replay-time", "0.0s")
             )),
-          div(class="event-panel", tags$h4("Live action feed"), tags$div(id="event-feed", class="empty-feed", "Load a round to begin"))
+          div(class="event-panel", tags$h4("Live action feed"), tags$p(class="event-help", "Map badges mark shots, throws, utility, damage, and objective actions."), tags$div(id="event-feed", class="empty-feed", "Load a round to begin"))
         )),
         nav("Scoreboard", div(class="card", div(class="card-header", "Player performance"), div(class="p-3", DTOutput("scoreboard")))),
         nav("Round analysis", fluidRow(column(6, div(class="card", plotlyOutput("round_chart", height="430px"))), column(6, div(class="card", plotlyOutput("event_chart", height="430px"))))),
@@ -92,28 +85,94 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  rv <- reactiveValues(data = NULL, status = "Ready")
+  rv <- reactiveValues(data = NULL, status = "Ready", parse_proc = NULL, parse_out = NULL, parse_progress = NULL)
 
-  load_source <- function(path, fps) {
-    rv$status <- "Parsing and indexing demo…"
-    data <- parse_demo(path, fps)
+  finish_source <- function(path) {
+    data <- read_cache(path)
     rv$data <- data
     updateSelectInput(session, "round", choices = setNames(data$rounds$round_id, paste("Round", data$rounds$round_id)), selected = data$rounds$round_id[1])
     rv$status <- sprintf("Cached %s movement samples and %s events", format(nrow(data$ticks), big.mark=","), format(nrow(data$events), big.mark=","))
+    rv$parse_progress <- list(value=100L, stage="Replay ready", complete=TRUE)
+  }
+
+  start_source <- function(path, fps) {
+    if (is.na(python_bin) || !nzchar(python_bin)) stop("Python is not available on this server")
+    out <- cache_path_for(path, fps)
+    if (file.exists(file.path(out, "metadata.json"))) {
+      finish_source(out)
+      return(invisible(NULL))
+    }
+    if (!is.null(rv$parse_proc) && rv$parse_proc$is_alive()) stop("A demo is already being parsed")
+    dir.create(out, recursive = TRUE, showWarnings = FALSE)
+    unlink(file.path(out, "progress.json"), force=TRUE)
+    rv$parse_out <- out
+    rv$parse_progress <- list(value=1L, stage="Starting parser", complete=FALSE)
+    rv$status <- "Starting parser (1%)"
+    session$sendCustomMessage("parsingState", list(active=TRUE))
+    rv$parse_proc <- tryCatch(
+      processx::process$new(
+        python_bin,
+        args=c(file.path(root, "python", "parse_demo.py"), path, out, "--fps", as.character(as.integer(fps))),
+        stdout=file.path(out, "parser.stdout.log"), stderr=file.path(out, "parser.stderr.log"),
+        cleanup=TRUE, windows_hide_window=TRUE
+      ),
+      error=function(e) {
+        session$sendCustomMessage("parsingState", list(active=FALSE))
+        rv$parse_progress <- list(value=0L, stage="Unable to start parser", complete=FALSE, failed=TRUE)
+        stop(e)
+      }
+    )
   }
 
   observeEvent(TRUE, {
     if (!is.na(initial_demo) && length(initial_demo) && !is.na(python_bin)) {
-      tryCatch(load_source(initial_demo, 8L), error=function(e) rv$status <- paste("Startup parse failed:", conditionMessage(e)))
+      tryCatch(start_source(initial_demo, 8L), error=function(e) rv$status <- paste("Startup parse failed:", conditionMessage(e)))
     } else rv$status <- "Choose a demo file to begin"
   }, once=TRUE)
 
   observeEvent(input$parse, {
     req(input$demo$datapath)
-    tryCatch(load_source(input$demo$datapath, input$parse_fps), error=function(e) rv$status <- paste("Parse failed:", conditionMessage(e)))
+    tryCatch(start_source(input$demo$datapath, input$parse_fps), error=function(e) rv$status <- paste("Parse failed:", conditionMessage(e)))
+  })
+
+  observe({
+    invalidateLater(300, session)
+    proc <- rv$parse_proc
+    if (is.null(proc)) return()
+    progress_file <- file.path(rv$parse_out, "progress.json")
+    if (file.exists(progress_file)) {
+      progress <- tryCatch(fromJSON(progress_file, simplifyVector=TRUE), error=function(e) NULL)
+      if (!is.null(progress)) {
+        rv$parse_progress <- list(value=as.integer(progress$value), stage=progress$stage, complete=FALSE)
+        rv$status <- sprintf("%s (%s%%)", progress$stage, as.integer(progress$value))
+      }
+    }
+    if (proc$is_alive()) return()
+    exit_status <- proc$get_exit_status()
+    out <- rv$parse_out
+    rv$parse_proc <- NULL
+    session$sendCustomMessage("parsingState", list(active=FALSE))
+    if (identical(exit_status, 0L) && file.exists(file.path(out, "metadata.json"))) {
+      tryCatch(finish_source(out), error=function(e) rv$status <- paste("Cache load failed:", conditionMessage(e)))
+    } else {
+      error_file <- file.path(out, "parser.stderr.log")
+      detail <- if (file.exists(error_file)) paste(tail(readLines(error_file, warn=FALSE), 8), collapse=" ") else "Parser stopped unexpectedly"
+      rv$parse_progress <- list(value=0L, stage="Parsing failed", complete=FALSE, failed=TRUE)
+      rv$status <- paste("Parse failed:", detail)
+    }
   })
 
   output$status <- renderText(rv$status)
+  output$parse_progress <- renderUI({
+    p <- rv$parse_progress
+    if (is.null(p)) return(NULL)
+    value <- max(0L, min(100L, as.integer(p$value)))
+    div(class=paste("parse-progress", if (isTRUE(p$complete)) "complete" else "", if (isTRUE(p$failed)) "failed" else ""),
+      div(class="parse-progress-copy", tags$span(p$stage), tags$strong(sprintf("%s%%", value))),
+      div(class="progress-track", role="progressbar", `aria-valuemin`="0", `aria-valuemax`="100", `aria-valuenow`=value,
+        div(class="progress-fill", style=sprintf("width:%s%%", value)))
+    )
+  })
   output$match_subtitle <- renderText({
     if (is.null(rv$data)) return("Drop in a .dem or .dem.zst file to begin")
     m <- rv$data$metadata
@@ -144,7 +203,10 @@ server <- function(input, output, session) {
       players=lapply(seq_len(nrow(x)), function(i) list(name=x$name[i], X=x$X[i], Y=x$Y[i], Z=x$Z[i], yaw=x$yaw[i], health=x$health[i], is_alive=isTRUE(x$is_alive[i]), team_num=x$team_num[i], weapon=x$active_weapon_name[i]))
     )))
     ev <- d$events[d$events$round_id == selected_round]
-    events <- lapply(seq_len(nrow(ev)), function(i) list(tick=ev$tick[i], event_name=ev$event_name[i], label=ev$label[i], weapon=ev$weapon[i]))
+    events <- lapply(seq_len(nrow(ev)), function(i) list(
+      tick=ev$tick[i], event_name=ev$event_name[i], label=ev$label[i], actor=ev$actor[i], target=ev$target[i],
+      weapon=ev$weapon[i], x=ev$x[i], y=ev$y[i], damage=ev$damage[i], headshot=isTRUE(ev$headshot[i])
+    ))
     map_name <- d$metadata$map_name
     radar <- map_data[[map_name]]
     has_radar <- !is.null(radar) && file.exists(file.path(root, "www", "maps", paste0(map_name, ".png")))

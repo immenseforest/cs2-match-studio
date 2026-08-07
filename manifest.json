@@ -1586,6 +1586,36 @@
         "Built": "R 4.2.2; ; 2022-11-10 06:03:33 UTC; windows"
       }
     },
+    "processx": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "processx",
+        "Title": "Execute and Control System Processes",
+        "Version": "3.8.0",
+        "Authors@R": "c(\n    person(\"Gábor\", \"Csárdi\", , \"csardi.gabor@gmail.com\", role = c(\"aut\", \"cre\", \"cph\"),\n           comment = c(ORCID = \"0000-0001-7098-9676\")),\n    person(\"Winston\", \"Chang\", role = \"aut\"),\n    person(\"RStudio\", role = c(\"cph\", \"fnd\")),\n    person(\"Mango Solutions\", role = c(\"cph\", \"fnd\"))\n  )",
+        "Description": "Tools to run system processes in the background.  It can\n    check if a background process is running; wait on a background process\n    to finish; get the exit status of finished processes; kill background\n    processes. It can read the standard output and error of the processes,\n    using non-blocking connections. 'processx' can poll a process for\n    standard output or error, with a timeout. It can also poll several\n    processes at once.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://processx.r-lib.org,\nhttps://github.com/r-lib/processx#readme",
+        "BugReports": "https://github.com/r-lib/processx/issues",
+        "Depends": "R (>= 3.4.0)",
+        "Imports": "ps (>= 1.2.0), R6, utils",
+        "Suggests": "callr (>= 3.7.0), cli (>= 3.3.0), codetools, covr, curl,\ndebugme, parallel, rlang (>= 1.0.2), testthat (>= 3.0.0), withr",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.2.0",
+        "Config/testthat/edition": "3",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "NeedsCompilation": "yes",
+        "Packaged": "2022-10-26 10:23:37 UTC; gaborcsardi",
+        "Author": "Gábor Csárdi [aut, cre, cph] (<https://orcid.org/0000-0001-7098-9676>),\n  Winston Chang [aut],\n  RStudio [cph, fnd],\n  Mango Solutions [cph, fnd]",
+        "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2022-10-26 11:12:39 UTC",
+        "Built": "R 4.2.2; x86_64-w64-mingw32; 2022-11-10 03:00:15 UTC; windows",
+        "ExperimentalWindowsRuntime": "ucrt",
+        "Archs": "x64"
+      }
+    },
     "promises": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -1614,6 +1644,37 @@
         "Repository": "CRAN",
         "Date/Publication": "2021-02-11 19:00:02 UTC",
         "Built": "R 4.2.1; x86_64-w64-mingw32; 2022-08-11 02:09:17 UTC; windows",
+        "ExperimentalWindowsRuntime": "ucrt",
+        "Archs": "x64"
+      }
+    },
+    "ps": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "ps",
+        "Title": "List, Query, Manipulate System Processes",
+        "Version": "1.7.2",
+        "Authors@R": "c(\n    person(\"Jay\", \"Loden\", role = \"aut\"),\n    person(\"Dave\", \"Daeschler\", role = \"aut\"),\n    person(\"Giampaolo\", \"Rodola'\", role = \"aut\"),\n    person(\"Gábor\", \"Csárdi\", , \"csardi.gabor@gmail.com\", role = c(\"aut\", \"cre\")),\n    person(\"RStudio\", role = c(\"cph\", \"fnd\"))\n  )",
+        "Description": "List, query and manipulate all system processes, on\n    'Windows', 'Linux' and 'macOS'.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://github.com/r-lib/ps#readme, https://ps.r-lib.org/",
+        "BugReports": "https://github.com/r-lib/ps/issues",
+        "Depends": "R (>= 3.4)",
+        "Imports": "utils",
+        "Suggests": "callr, covr, curl, pillar, pingr, processx (>= 3.1.0), R6,\nrlang, testthat (>= 3.0.0),",
+        "Biarch": "true",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.2.1",
+        "Config/testthat/edition": "3",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "NeedsCompilation": "yes",
+        "Packaged": "2022-10-26 17:03:09 UTC; gaborcsardi",
+        "Author": "Jay Loden [aut],\n  Dave Daeschler [aut],\n  Giampaolo Rodola' [aut],\n  Gábor Csárdi [aut, cre],\n  RStudio [cph, fnd]",
+        "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2022-10-26 17:32:36 UTC",
+        "Built": "R 4.2.2; x86_64-w64-mingw32; 2022-11-10 02:02:18 UTC; windows",
         "ExperimentalWindowsRuntime": "ucrt",
         "Archs": "x64"
       }
@@ -2289,16 +2350,16 @@
   },
   "files": {
     "app.R": {
-      "checksum": "baacb1eb89f928e762ca5c5583e47858"
+      "checksum": "cbcad0cd1295820b125b8f7f39a96e09"
     },
     "python/parse_demo.py": {
-      "checksum": "5a4056e9cb640afb349cb8336ffef1aa"
+      "checksum": "f43661137659e485bfedd56bf7e39f5a"
     },
     "python/render_replay.py": {
-      "checksum": "4f90bb58621b3cc3f216acbf2b47bf7e"
+      "checksum": "91d8ac1d080e0b89b294ddc727675262"
     },
     "README.md": {
-      "checksum": "31b3791e9c2695dcd712b47b0e0230e7"
+      "checksum": "5dc7190fe1403699b0df30b2bfb0e4cf"
     },
     "requirements.txt": {
       "checksum": "70edbfcdc0f4601de1384ec7a1fced75"
@@ -2361,10 +2422,10 @@
       "checksum": "a4c3f68f4391c6c7fb0101939367ba81"
     },
     "www/replay.js": {
-      "checksum": "6e8b278afefde7642395093b2782c350"
+      "checksum": "0bff285a1c37e2a4b149f63318dcd702"
     },
     "www/styles.css": {
-      "checksum": "2e468725121694bf17ff071d99201afc"
+      "checksum": "42be62b5cc292fd15aba18c5b6968474"
     }
   },
   "users": null
