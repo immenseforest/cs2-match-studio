@@ -2350,7 +2350,7 @@
   },
   "files": {
     "app.R": {
-      "checksum": "cbcad0cd1295820b125b8f7f39a96e09"
+      "checksum": "3f4ad322b677e78d6eb6aa63e7bdd220"
     },
     "python/parse_demo.py": {
       "checksum": "f43661137659e485bfedd56bf7e39f5a"
@@ -2425,7 +2425,7 @@
       "checksum": "0bff285a1c37e2a4b149f63318dcd702"
     },
     "www/styles.css": {
-      "checksum": "42be62b5cc292fd15aba18c5b6968474"
+      "checksum": "ed79b220b1f0cf253eb5f07ba5f220e3"
     }
   },
   "users": null

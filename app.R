@@ -42,7 +42,7 @@ cache_path_for <- function(source, fps) {
 initial_demo <- list.files(root, pattern = "\\.dem(\\.zst)?$", full.names = TRUE, ignore.case = TRUE)[1]
 
 ui <- fluidPage(
-  theme = bs_theme(version = 5, bg = "#08111f", fg = "#f7f9fc", primary = "#5ee7b2"),
+  theme = bs_theme(version = 5, bg = "#050505", fg = "#f7f7f7", primary = "#f2f2f2"),
   tags$head(tags$link(rel = "stylesheet", href = "styles.css"), tags$script(src = "replay.js")),
   div(class = "app-header",
       div(tags$div(class="eyebrow", "TACTICAL REPLAY & MATCH ANALYSIS"),
@@ -229,13 +229,13 @@ server <- function(input, output, session) {
   output$round_chart <- renderPlotly({
     req(rv$data); d <- rv$data$rounds
     plot_ly(d, x=~round_id, y=~duration_seconds, type="bar", color=~winner, colors=c(CT="#4eb7ff",T="#f5b942"), text=~paste("Winner:",winner,"<br>Reason:",reason), hoverinfo="text") %>%
-      layout(title="Round duration & winner", xaxis=list(title="Round"), yaxis=list(title="Seconds"), paper_bgcolor="#0c1828", plot_bgcolor="#0c1828", font=list(color="#f4f7fb"), legend=list(orientation="h"))
+      layout(title="Round duration & winner", xaxis=list(title="Round"), yaxis=list(title="Seconds"), paper_bgcolor="#111111", plot_bgcolor="#111111", font=list(color="#f7f7f7"), legend=list(orientation="h"))
   })
 
   output$event_chart <- renderPlotly({
     req(rv$data); e <- rv$data$events[, .N, by=event_name][order(N)]
     plot_ly(e, x=~N, y=~reorder(event_name,N), type="bar", orientation="h", marker=list(color="#6ce5b1"), hovertemplate="%{y}: %{x}<extra></extra>") %>%
-      layout(title="Recorded actions", xaxis=list(title="Events"), yaxis=list(title=""), paper_bgcolor="#0c1828", plot_bgcolor="#0c1828", font=list(color="#f4f7fb"))
+      layout(title="Recorded actions", xaxis=list(title="Events"), yaxis=list(title=""), paper_bgcolor="#111111", plot_bgcolor="#111111", font=list(color="#f7f7f7"))
   })
 
   output$events_table <- renderDT({
