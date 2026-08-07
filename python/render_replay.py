@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
-BG, GRID, TEXT, MUTED = "#07101b", "#29445f", "#f7f9fc", "#bdcad9"
+BG, GRID, TEXT, MUTED = "#050505", "#353535", "#f7f7f7", "#bdbdbd"
 TEAM = {2: "#ffc857", 3: "#4cc9ff"}
 
 
@@ -150,10 +150,10 @@ def main() -> None:
                     x, y = int(i*plot_w/8), int(i*height/8)
                     draw.line((x,0,x,height), fill=GRID, width=1); draw.line((0,y,plot_w,y), fill=GRID, width=1)
             else:
-                draw.rectangle((radar_x,radar_y,radar_x+radar_size,radar_y+radar_size), outline="#4d6c8d", width=2)
-                draw.rounded_rectangle((16,16,190,44), radius=13, fill=BG, outline="#728aa3")
+                draw.rectangle((radar_x,radar_y,radar_x+radar_size,radar_y+radar_size), outline="#616161", width=2)
+                draw.rounded_rectangle((16,16,190,44), radius=13, fill=BG, outline="#777777")
                 draw.text((27,22), f"{map_name}{level_label}".upper(), fill=TEXT, font=font(12,True))
-            draw.rectangle((plot_w,0,width,height), fill="#111f31")
+            draw.rectangle((plot_w,0,width,height), fill="#111111")
 
             player_points = {}
             for player in current.itertuples():
@@ -193,16 +193,16 @@ def main() -> None:
                 key = (round(point[0]/24),round(point[1]/24)); offset = marker_offsets[key]; marker_offsets[key] += 1
                 tag_font = font(10,True); box = draw.textbbox((0,0),info["tag"],font=tag_font); tag_w = box[2]-box[0]+12
                 tag_x, tag_y = point[0]-tag_w/2, point[1]+14+offset*20
-                draw.rounded_rectangle((tag_x,tag_y,tag_x+tag_w,tag_y+17), radius=5, fill="#040910", outline=info["color"])
+                draw.rounded_rectangle((tag_x,tag_y,tag_x+tag_w,tag_y+17), radius=5, fill="#050505", outline=info["color"])
                 draw.text((tag_x+6,tag_y+2),info["tag"],fill=info["color"],font=tag_font)
 
             alive_labels = []
             for player in current.itertuples():
                 pos = player_points[str(player.name)][0]
                 alive = bool(player.is_alive) and float(player.health or 0) > 0
-                color = TEAM.get(int(player.team_num), MUTED) if alive else "#536273"
+                color = TEAM.get(int(player.team_num), MUTED) if alive else "#555555"
                 radius = 9 if alive else 6
-                draw.ellipse((pos[0]-radius,pos[1]-radius,pos[0]+radius,pos[1]+radius), fill=color, outline="white" if alive else "#8796a8", width=2)
+                draw.ellipse((pos[0]-radius,pos[1]-radius,pos[0]+radius,pos[1]+radius), fill=color, outline="white" if alive else "#8a8a8a", width=2)
                 if alive:
                     alive_labels.append((player,pos,color))
                 else:
@@ -228,8 +228,8 @@ def main() -> None:
                 placed.append(best)
                 anchor_x = best[0] if best[0]>pos[0] else best[0]+best[2]
                 anchor_y = max(best[1]+4,min(best[1]+best[3]-4,pos[1]))
-                draw.line((pos[0],pos[1],anchor_x,anchor_y),fill="#9aabba",width=1)
-                draw.rounded_rectangle((best[0],best[1],best[0]+best[2],best[1]+best[3]),radius=6,fill="#03080f",outline=color,width=1)
+                draw.line((pos[0],pos[1],anchor_x,anchor_y),fill="#a0a0a0",width=1)
+                draw.rounded_rectangle((best[0],best[1],best[0]+best[2],best[1]+best[3]),radius=6,fill="#050505",outline=color,width=1)
                 draw.rectangle((best[0]+5,best[1]+5,best[0]+8,best[1]+box_h-5),fill=color)
                 draw.text((best[0]+12,best[1]+4),name,fill=TEXT,font=name_font)
                 draw.text((best[0]+box_w-hp_w-7,best[1]+5),hp,fill="#5ee7b2" if int(hp)>40 else "#ff7b88",font=hp_font)
