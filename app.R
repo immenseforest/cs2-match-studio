@@ -81,7 +81,40 @@ ui <- fluidPage(
             div(id="live-scoreboard", class="empty-scoreboard", "Load a round to view player equipment")
           )
         )),
-        nav("Scoreboard", div(class="card", div(class="card-header", "Player performance"), div(class="p-3", DTOutput("scoreboard")))),
+        nav("Scoreboard", div(class="card", div(class="card-header", "Match scoreboard"), div(class="p-3", DTOutput("scoreboard")))),
+        nav("Player performance", div(class="performance-page",
+          div(class="card performance-intro",
+            div(class="performance-heading",
+              div(tags$h3("Individual player performance"), tags$p("Compare every player round by round, then inspect one player's detailed trend.")),
+              actionButton("compare_all_players", "Show all players", class="btn-secondary btn-sm")
+            ),
+            fluidRow(
+              column(7, selectizeInput("compare_players", "Players shown in comparison", choices=NULL, multiple=TRUE,
+                options=list(plugins=list("remove_button"), placeholder="Choose one or more players"))),
+              column(3, selectInput("performance_player", "Player detail", choices=NULL)),
+              column(2, selectInput("player_metric", "Detail metric", choices=c("Kills"="kills", "Damage done"="damage", "Time alive"="alive_seconds", "Damage per kill"="damage_per_kill"), selected="damage"))
+            )
+          ),
+          div(class="card performance-chart-card",
+            div(class="card-header chart-heading", div("Kills vs time alive by round"), tags$span("Bubble size = damage done · click legend names to isolate players")),
+            plotlyOutput("kill_survival_scatter", height="560px")
+          ),
+          uiOutput("player_performance_kpis"),
+          fluidRow(
+            column(12, div(class="card performance-chart-card",
+              div(class="card-header chart-heading", div("Selected player by round"), tags$span("Change the metric above to inspect form and consistency")),
+              plotlyOutput("player_round_profile", height="400px")
+            ))
+          ),
+          div(class="card performance-table-card",
+            div(class="card-header chart-heading", div("All-player averages"), tags$span("Per-round averages and match totals")),
+            div(class="p-3", DTOutput("player_averages"))
+          ),
+          div(class="card performance-table-card",
+            div(class="card-header chart-heading", div("Selected player: round detail"), tags$span("Survivors are timed through the end of the round")),
+            div(class="p-3", DTOutput("player_round_metrics"))
+          )
+        )),
         nav("Round analysis", fluidRow(column(6, div(class="card", plotlyOutput("round_chart", height="520px"))), column(6, div(class="card", plotlyOutput("event_chart", height="520px"))))),
         nav("Event log", div(class="card", div(class="p-3", DTOutput("events_table"))))
       )
@@ -96,6 +129,9 @@ server <- function(input, output, session) {
     data <- read_cache(path)
     rv$data <- data
     updateSelectInput(session, "round", choices = setNames(data$rounds$round_id, paste("Round", data$rounds$round_id)), selected = data$rounds$round_id[1])
+    player_names <- data$players[order(team_name, -kills), name]
+    updateSelectizeInput(session, "compare_players", choices=player_names, selected=player_names, server=TRUE)
+    updateSelectInput(session, "performance_player", choices=player_names, selected=player_names[1])
     rv$status <- sprintf("Cached %s movement samples and %s events", format(nrow(data$ticks), big.mark=","), format(nrow(data$events), big.mark=","))
     rv$parse_progress <- list(value=100L, stage="Replay ready", complete=TRUE)
   }
@@ -196,6 +232,76 @@ server <- function(input, output, session) {
     )
   })
 
+  player_round_metrics <- reactive({
+    req(rv$data)
+    d <- rv$data
+    players <- unique(d$players[, .(name=as.character(name), team_name=as.character(team_name))])
+    rounds <- d$rounds[, .(
+      round_id=as.integer(round_id),
+      start_tick=as.integer(start_tick),
+      duration_seconds=as.numeric(duration_seconds)
+    )]
+    metrics <- merge(
+      CJ(round_id=rounds$round_id, name=players$name, unique=TRUE),
+      players,
+      by="name",
+      all.x=TRUE
+    )
+    metrics <- merge(metrics, rounds, by="round_id", all.x=TRUE)
+
+    kills <- d$events[
+      event_name == "player_death" & !is.na(actor) & nzchar(actor),
+      .(kills=.N),
+      by=.(round_id=as.integer(round_id), name=as.character(actor))
+    ]
+    damage <- d$events[
+      event_name == "player_hurt" & !is.na(actor) & nzchar(actor),
+      .(damage=sum(as.numeric(damage), na.rm=TRUE)),
+      by=.(round_id=as.integer(round_id), name=as.character(actor))
+    ]
+    deaths <- d$events[
+      event_name == "player_death" & !is.na(target) & nzchar(target),
+      .(death_tick=min(as.integer(tick), na.rm=TRUE)),
+      by=.(round_id=as.integer(round_id), name=as.character(target))
+    ]
+
+    metrics <- merge(metrics, kills, by=c("round_id", "name"), all.x=TRUE)
+    metrics <- merge(metrics, damage, by=c("round_id", "name"), all.x=TRUE)
+    metrics <- merge(metrics, deaths, by=c("round_id", "name"), all.x=TRUE)
+    metrics[is.na(kills), kills := 0L]
+    metrics[is.na(damage), damage := 0]
+    metrics[, alive_seconds := fifelse(
+      is.na(death_tick),
+      duration_seconds,
+      pmax(0, pmin(duration_seconds, (death_tick - start_tick) / 64))
+    )]
+    metrics[, survived := is.na(death_tick)]
+    metrics[, damage_per_kill := fifelse(kills > 0, damage / kills, NA_real_)]
+    setorder(metrics, round_id, team_name, name)
+    metrics[]
+  })
+
+  player_aggregate_metrics <- reactive({
+    metrics <- player_round_metrics()
+    averages <- metrics[, .(
+      rounds=.N,
+      avg_kills=mean(kills),
+      avg_damage=mean(damage),
+      avg_alive_seconds=mean(alive_seconds),
+      total_kills=sum(kills),
+      total_damage=sum(damage)
+    ), by=.(name, team_name)]
+    averages[, damage_per_kill := fifelse(total_kills > 0, total_damage / total_kills, NA_real_)]
+    setorder(averages, -avg_kills, -avg_damage)
+    averages[]
+  })
+
+  observeEvent(input$compare_all_players, {
+    req(rv$data)
+    player_names <- rv$data$players[order(team_name, -kills), name]
+    updateSelectizeInput(session, "compare_players", selected=player_names, server=TRUE)
+  })
+
   replay_payload <- reactive({
     req(rv$data, input$round)
     selected_round <- as.integer(input$round); d <- rv$data
@@ -233,6 +339,135 @@ server <- function(input, output, session) {
     req(rv$data)
     datatable(rv$data$players[, .(Player=name, Team=team_name, K=kills, D=deaths, `K/D`=kd, Damage=damage, `HS %`=hs_pct)], rownames=FALSE,
       options=list(pageLength=12, dom="tip", order=list(list(2,"desc"))), class="compact stripe")
+  })
+
+  output$kill_survival_scatter <- renderPlotly({
+    metrics <- copy(player_round_metrics())
+    selected <- input$compare_players
+    req(length(selected) > 0)
+    metrics <- metrics[name %in% selected]
+    req(nrow(metrics) > 0)
+
+    player_colors <- c("#4cc9ff", "#ffc857", "#ff7b88", "#5ee7b2", "#c4a7ff", "#ff9f70", "#7dd3fc", "#f9a8d4", "#a3e635", "#facc15", "#fb7185", "#2dd4bf")
+    selected <- selected[selected %in% metrics$name]
+    metrics[, player := factor(name, levels=selected)]
+    metrics[, hover := sprintf(
+      "<b>%s</b> · Round %s<br>Team: %s<br>Kills: %s<br>Damage done: %.0f<br>Time alive: %.1f s<br>Damage / kill: %s",
+      name, round_id, team_name, kills, damage, alive_seconds,
+      ifelse(is.na(damage_per_kill), "—", sprintf("%.1f", damage_per_kill))
+    )]
+
+    plot_ly(
+      metrics,
+      x=~alive_seconds,
+      y=~kills,
+      color=~player,
+      colors=player_colors,
+      size=~pmax(damage, 1),
+      sizes=c(9, 36),
+      type="scatter",
+      mode="markers",
+      text=~hover,
+      hoverinfo="text",
+      marker=list(opacity=.76)
+    ) %>%
+      layout(
+        xaxis=list(title="Time alive in round (seconds)", rangemode="tozero", gridcolor="#333333", zerolinecolor="#555555"),
+        yaxis=list(title="Kills in round", rangemode="tozero", dtick=1, gridcolor="#333333", zerolinecolor="#555555"),
+        paper_bgcolor="#111111",
+        plot_bgcolor="#111111",
+        font=list(color="#f7f7f7"),
+        legend=list(orientation="h", x=0, y=1.12, title=list(text="Players")),
+        margin=list(t=82, r=24, b=62, l=64),
+        hovermode="closest"
+      ) %>%
+      config(displaylogo=FALSE, modeBarButtonsToRemove=c("lasso2d", "select2d"), responsive=TRUE)
+  })
+
+  output$player_performance_kpis <- renderUI({
+    req(input$performance_player)
+    player <- player_aggregate_metrics()[name == input$performance_player][1]
+    req(nrow(player))
+    div(class="performance-kpis",
+      div(class="performance-kpi", tags$span("Total kills"), tags$strong(player$total_kills)),
+      div(class="performance-kpi", tags$span("Average damage / round"), tags$strong(sprintf("%.1f", player$avg_damage))),
+      div(class="performance-kpi", tags$span("Average time alive"), tags$strong(sprintf("%.1f s", player$avg_alive_seconds))),
+      div(class="performance-kpi", tags$span("Damage / kill"), tags$strong(ifelse(is.na(player$damage_per_kill), "—", sprintf("%.1f", player$damage_per_kill))))
+    )
+  })
+
+  output$player_round_profile <- renderPlotly({
+    req(input$performance_player, input$player_metric)
+    metrics <- player_round_metrics()[name == input$performance_player]
+    req(nrow(metrics) > 0)
+    metric <- input$player_metric
+    metric_labels <- c(kills="Kills", damage="Damage done", alive_seconds="Time alive (seconds)", damage_per_kill="Damage per kill")
+    values <- metrics[[metric]]
+    metrics[, hover := sprintf(
+      "<b>%s</b> · Round %s<br>Kills: %s<br>Damage done: %.0f<br>Time alive: %.1f s<br>%s",
+      name, round_id, kills, damage, alive_seconds, ifelse(survived, "Survived round", "Eliminated")
+    )]
+    y_axis <- list(title=unname(metric_labels[metric]), rangemode="tozero", gridcolor="#333333", zerolinecolor="#555555")
+    if (identical(metric, "kills")) y_axis$dtick <- 1
+
+    plot_ly(
+      metrics,
+      x=~round_id,
+      y=values,
+      type="scatter",
+      mode="lines+markers",
+      text=~hover,
+      hoverinfo="text",
+      connectgaps=FALSE,
+      line=list(color="#f2f2f2", width=2.5),
+      marker=list(color=ifelse(metrics$survived, "#5ee7b2", "#ff7b88"), size=9, line=list(color="#111111", width=1))
+    ) %>%
+      layout(
+        xaxis=list(title="Round", dtick=1, gridcolor="#333333", zerolinecolor="#555555"),
+        yaxis=y_axis,
+        paper_bgcolor="#111111",
+        plot_bgcolor="#111111",
+        font=list(color="#f7f7f7"),
+        margin=list(t=30, r=20, b=56, l=64),
+        showlegend=FALSE
+      ) %>%
+      config(displaylogo=FALSE, modeBarButtonsToRemove=c("lasso2d", "select2d"), responsive=TRUE)
+  })
+
+  output$player_averages <- renderDT({
+    averages <- player_aggregate_metrics()[, .(
+      Player=name,
+      Team=team_name,
+      `Avg kills`=avg_kills,
+      `Avg damage`=avg_damage,
+      `Avg alive (s)`=avg_alive_seconds,
+      `Damage / kill`=damage_per_kill,
+      `Total kills`=total_kills
+    )]
+    datatable(
+      averages,
+      rownames=FALSE,
+      options=list(pageLength=12, dom="tip", order=list(list(2, "desc")), scrollX=TRUE),
+      class="compact stripe"
+    ) %>% formatRound(columns=c("Avg kills", "Avg damage", "Avg alive (s)", "Damage / kill"), digits=1)
+  })
+
+  output$player_round_metrics <- renderDT({
+    req(input$performance_player)
+    metrics <- player_round_metrics()[name == input$performance_player, .(
+      Round=round_id,
+      Kills=kills,
+      `Damage done`=damage,
+      `Time alive (s)`=alive_seconds,
+      `Damage / kill`=damage_per_kill,
+      Result=ifelse(survived, "Survived", "Eliminated")
+    )]
+    datatable(
+      metrics,
+      rownames=FALSE,
+      options=list(pageLength=12, dom="tip", order=list(list(0, "asc")), scrollX=TRUE),
+      class="compact stripe"
+    ) %>% formatRound(columns=c("Damage done", "Time alive (s)", "Damage / kill"), digits=1)
   })
 
   output$round_chart <- renderPlotly({

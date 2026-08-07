@@ -271,10 +271,10 @@
       const color=colors[p.team_num]||"#bdcad9";
       const anchorX=best.x>p.point[0]?best.x:best.x+best.w;
       const anchorY=Math.max(best.y+4,Math.min(best.y+best.h-4,p.point[1]));
-      ctx.strokeStyle="rgba(225,225,225,.55)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p.point[0],p.point[1]);ctx.lineTo(anchorX,anchorY);ctx.stroke();
-      roundedRect(ctx,best.x,best.y,best.w,best.h,6);ctx.fillStyle="rgba(5,5,5,.91)";ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
-      ctx.fillStyle=color;ctx.fillRect(best.x+5,best.y+5,3,best.h-10);
-      ctx.font="700 11px system-ui";ctx.fillStyle="#fff";ctx.fillText(name,best.x+12,best.y+14);
+      ctx.strokeStyle="rgba(225,225,225,.3)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p.point[0],p.point[1]);ctx.lineTo(anchorX,anchorY);ctx.stroke();
+      roundedRect(ctx,best.x,best.y,best.w,best.h,6);ctx.fillStyle="rgba(5,5,5,.56)";ctx.fill();ctx.globalAlpha=.68;ctx.strokeStyle=color;ctx.lineWidth=1.25;ctx.stroke();ctx.globalAlpha=1;
+      ctx.globalAlpha=.72;ctx.fillStyle=color;ctx.fillRect(best.x+5,best.y+5,3,best.h-10);ctx.globalAlpha=1;
+      ctx.font="700 11px system-ui";ctx.fillStyle="rgba(255,255,255,.8)";ctx.fillText(name,best.x+12,best.y+14);
       ctx.font="800 10px system-ui";ctx.fillStyle=Number(p.health)>40?"#5ee7b2":"#ff7b88";ctx.fillText(hp,best.x+box.w-hpWidth-7,best.y+14);
     });
   }
