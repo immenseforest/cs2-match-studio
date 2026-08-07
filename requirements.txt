@@ -1,0 +1,6 @@
+demoparser2==0.41.4
+zstandard>=0.25,<1
+imageio>=2.37,<3
+imageio-ffmpeg>=0.6,<1
+pillow>=12,<13
+

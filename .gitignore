@@ -1,0 +1,7 @@
+cache/
+__pycache__/
+*.dem
+*.dem.zst
+*.gif
+*.mp4
+.Rhistory
