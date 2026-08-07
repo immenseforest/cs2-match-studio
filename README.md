@@ -48,3 +48,6 @@ The repository contains both `manifest.json` for the R environment and
 publish `app.R` from the `main` branch and select Python 3.12 when prompted.
 The large source demos and local parse cache are deliberately excluded from Git;
 users upload their own `.dem` or `.dem.zst` file through the app.
+The tactical replay uses calibrated CS2 radar layouts from Awpy, supports
+automatic upper/lower-floor switching on multi-level maps, and keeps a
+high-contrast coordinate fallback for maps without a bundled radar.

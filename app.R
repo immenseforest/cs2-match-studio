@@ -9,6 +9,8 @@ suppressPackageStartupMessages({
 
 options(shiny.maxRequestSize = 1024^3)
 root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+map_data_file <- file.path(root, "www", "maps", "map-data.json")
+map_data <- if (file.exists(map_data_file)) fromJSON(map_data_file, simplifyVector = FALSE) else list()
 dir.create(file.path(root, "cache", "sass"), recursive = TRUE, showWarnings = FALSE)
 sass_cache <- sass::sass_file_cache(file.path(root, "cache", "sass"))
 sass::sass_cache_set_dir(file.path(root, "cache", "sass"), sass_cache)
@@ -48,7 +50,7 @@ parse_demo <- function(source, fps = 8L) {
 initial_demo <- list.files(root, pattern = "\\.dem(\\.zst)?$", full.names = TRUE, ignore.case = TRUE)[1]
 
 ui <- fluidPage(
-  theme = bs_theme(version = 5, bg = "#07111f", fg = "#f4f7fb", primary = "#6ce5b1"),
+  theme = bs_theme(version = 5, bg = "#08111f", fg = "#f7f9fc", primary = "#5ee7b2"),
   tags$head(tags$link(rel = "stylesheet", href = "styles.css"), tags$script(src = "replay.js")),
   div(class = "app-header",
       div(tags$div(class="eyebrow", "TACTICAL REPLAY & MATCH ANALYSIS"),
@@ -70,11 +72,13 @@ ui <- fluidPage(
       navs_tab(
         id="main_tab",
         nav("Replay", div(class="card replay-layout",
-          div(class="replay-stage", tags$canvas(id="replay-canvas"),
+          div(class="replay-stage", tags$canvas(id="replay-canvas", `aria-label`="Tactical map replay"),
+            div(id="replay-map-badge", class="map-badge", "Waiting for demo"),
             div(class="replay-toolbar",
-              tags$button(id="replay-prev", type="button", "◀"), tags$button(id="replay-play", type="button", "Play"), tags$button(id="replay-next", type="button", "▶"),
+              tags$button(id="replay-prev", type="button", `aria-label`="Previous frame", "◀"), tags$button(id="replay-play", type="button", "Play"), tags$button(id="replay-next", type="button", `aria-label`="Next frame", "▶"),
               tags$input(id="replay-seek", type="range", min="0", max="0", value="0"),
-              tags$select(id="replay-speed", tags$option(value="0.5", "0.5×"), tags$option(value="1", selected=NA, "1×"), tags$option(value="2", "2×"), tags$option(value="4", "4×")),
+              tags$select(id="replay-level", `aria-label`="Map level", tags$option(value="auto", "Auto level"), tags$option(value="upper", "Upper"), tags$option(value="lower", "Lower")),
+              tags$select(id="replay-speed", `aria-label`="Playback speed", tags$option(value="0.5", "0.5×"), tags$option(value="1", selected=NA, "1×"), tags$option(value="2", "2×"), tags$option(value="4", "4×")),
               tags$span(id="replay-time", "0.0s")
             )),
           div(class="event-panel", tags$h4("Live action feed"), tags$div(id="event-feed", class="empty-feed", "Load a round to begin"))
@@ -137,11 +141,19 @@ server <- function(input, output, session) {
     split_ticks <- base::split.data.frame(as.data.frame(ticks), f = ticks$tick)
     frames <- unname(lapply(split_ticks, function(x) list(
       tick=as.integer(x$tick[1]), time=(as.integer(x$tick[1])-r$start_tick)/64,
-      players=lapply(seq_len(nrow(x)), function(i) list(name=x$name[i], X=x$X[i], Y=x$Y[i], yaw=x$yaw[i], health=x$health[i], is_alive=isTRUE(x$is_alive[i]), team_num=x$team_num[i], weapon=x$active_weapon_name[i]))
+      players=lapply(seq_len(nrow(x)), function(i) list(name=x$name[i], X=x$X[i], Y=x$Y[i], Z=x$Z[i], yaw=x$yaw[i], health=x$health[i], is_alive=isTRUE(x$is_alive[i]), team_num=x$team_num[i], weapon=x$active_weapon_name[i]))
     )))
     ev <- d$events[d$events$round_id == selected_round]
     events <- lapply(seq_len(nrow(ev)), function(i) list(tick=ev$tick[i], event_name=ev$event_name[i], label=ev$label[i], weapon=ev$weapon[i]))
-    list(round=selected_round, fps=d$metadata$visual_fps, bounds=d$metadata$bounds, frames=frames, events=events)
+    map_name <- d$metadata$map_name
+    radar <- map_data[[map_name]]
+    has_radar <- !is.null(radar) && file.exists(file.path(root, "www", "maps", paste0(map_name, ".png")))
+    map <- if (has_radar) c(radar, list(
+      name=map_name,
+      image=paste0("maps/", map_name, ".png"),
+      lower_image=if (file.exists(file.path(root, "www", "maps", paste0(map_name, "_lower.png")))) paste0("maps/", map_name, "_lower.png") else NULL
+    )) else list(name=map_name)
+    list(round=selected_round, fps=d$metadata$visual_fps, bounds=d$metadata$bounds, map=map, frames=frames, events=events)
   })
 
   observeEvent(replay_payload(), session$sendCustomMessage("loadReplay", replay_payload()), ignoreInit=FALSE)

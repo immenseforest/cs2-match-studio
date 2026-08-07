@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "locale": "en_US",
+  "locale": "en_CA",
   "platform": "4.2.1",
   "metadata": {
     "appmode": "shiny",
@@ -1480,25 +1480,25 @@
         "Package": "openssl",
         "Type": "Package",
         "Title": "Toolkit for Encryption, Signatures and Certificates Based on\nOpenSSL",
-        "Version": "2.0.5",
-        "Authors@R": "c(person(\"Jeroen\", \"Ooms\", role = c(\"aut\", \"cre\"), email = \"jeroen@berkeley.edu\",\n    comment = c(ORCID = \"0000-0002-4035-0289\")),\n    person(\"Oliver\", \"Keyes\", role = \"ctb\"))",
+        "Version": "2.4.2",
+        "Authors@R": "c(person(\"Jeroen\", \"Ooms\", role = c(\"aut\", \"cre\"), email = \"jeroenooms@gmail.com\",\n    comment = c(ORCID = \"0000-0002-4035-0289\")),\n    person(\"Oliver\", \"Keyes\", role = \"ctb\"))",
         "Description": "Bindings to OpenSSL libssl and libcrypto, plus custom SSH key parsers.\n    Supports RSA, DSA and EC curves P-256, P-384, P-521, and curve25519. Cryptographic\n    signatures can either be created and verified manually or via x509 certificates. \n    AES can be used in cbc, ctr or gcm mode for symmetric encryption; RSA for asymmetric\n    (public key) encryption or EC for Diffie Hellman. High-level envelope functions \n    combine RSA and AES for encrypting arbitrary sized data. Other utilities include key\n    generators, hash functions (md5, sha1, sha256, etc), base64 encoder, a secure random\n    number generator, and 'bignum' math methods for manually performing crypto \n    calculations on large multibyte integers.",
         "License": "MIT + file LICENSE",
-        "URL": "https://github.com/jeroen/openssl",
+        "URL": "https://jeroen.r-universe.dev/openssl",
         "BugReports": "https://github.com/jeroen/openssl/issues",
         "SystemRequirements": "OpenSSL >= 1.0.2",
         "VignetteBuilder": "knitr",
         "Imports": "askpass",
         "Suggests": "curl, testthat (>= 2.1.0), digest, knitr, rmarkdown,\njsonlite, jose, sodium",
-        "RoxygenNote": "7.2.1",
         "Encoding": "UTF-8",
+        "Config/roxygen2/version": "8.0.0",
         "NeedsCompilation": "yes",
-        "Packaged": "2022-12-05 23:28:02 UTC; jeroen",
-        "Author": "Jeroen Ooms [aut, cre] (<https://orcid.org/0000-0002-4035-0289>),\n  Oliver Keyes [ctb]",
-        "Maintainer": "Jeroen Ooms <jeroen@berkeley.edu>",
+        "Packaged": "2026-06-09 10:51:42 UTC; jeroen",
+        "Author": "Jeroen Ooms [aut, cre] (ORCID: <https://orcid.org/0000-0002-4035-0289>),\n  Oliver Keyes [ctb]",
+        "Maintainer": "Jeroen Ooms <jeroenooms@gmail.com>",
         "Repository": "CRAN",
-        "Date/Publication": "2022-12-06 01:10:02 UTC",
-        "Built": "R 4.2.2; x86_64-w64-mingw32; 2023-01-27 02:59:21 UTC; windows",
+        "Date/Publication": "2026-06-09 13:30:02 UTC",
+        "Built": "R 4.2.1; x86_64-w64-mingw32; 2026-08-07 18:47:00 UTC; windows",
         "ExperimentalWindowsRuntime": "ucrt",
         "Archs": "x64"
       }
@@ -2289,22 +2289,82 @@
   },
   "files": {
     "app.R": {
-      "checksum": "f33b4c0dc54c8f4cc093039e5f5332b9"
+      "checksum": "baacb1eb89f928e762ca5c5583e47858"
     },
     "python/parse_demo.py": {
       "checksum": "5a4056e9cb640afb349cb8336ffef1aa"
     },
     "python/render_replay.py": {
-      "checksum": "2c0bad23d4ddf59427512379f929b032"
+      "checksum": "4f90bb58621b3cc3f216acbf2b47bf7e"
+    },
+    "README.md": {
+      "checksum": "31b3791e9c2695dcd712b47b0e0230e7"
     },
     "requirements.txt": {
       "checksum": "70edbfcdc0f4601de1384ec7a1fced75"
     },
+    "THIRD_PARTY_NOTICES.md": {
+      "checksum": "f5727fe9bc89c0dd91b3f1571adb4189"
+    },
+    "www/maps/ar_baggage.png": {
+      "checksum": "e318d707d32f71a07cc44b07b6d01e42"
+    },
+    "www/maps/ar_baggage_lower.png": {
+      "checksum": "13941eb5fa8a3dd9b3af0e158fbd35d9"
+    },
+    "www/maps/ar_shoots.png": {
+      "checksum": "2e7651dd7cfb90c9ea427db3d5d0b8c2"
+    },
+    "www/maps/cs_italy.png": {
+      "checksum": "4d747497034505aff2b02fda8cd22829"
+    },
+    "www/maps/cs_office.png": {
+      "checksum": "f70f7d2c8ebd53c8cb41b9edcaa460dc"
+    },
+    "www/maps/de_ancient.png": {
+      "checksum": "a7e26a9e947d4409d2b7d7b30e8ce3d0"
+    },
+    "www/maps/de_anubis.png": {
+      "checksum": "06dd1762890e008a9551133edb744da3"
+    },
+    "www/maps/de_dust2.png": {
+      "checksum": "53c6f1fd0a8b05c4fa2729252c1a2bf1"
+    },
+    "www/maps/de_inferno.png": {
+      "checksum": "4a2faa5c99254d3b132b7ae601cbbaf6"
+    },
+    "www/maps/de_mirage.png": {
+      "checksum": "c9e6b60843e38a71c8e23dd5ba73d756"
+    },
+    "www/maps/de_nuke.png": {
+      "checksum": "aff17e4c838bc7a5ff267fa7648d25ef"
+    },
+    "www/maps/de_nuke_lower.png": {
+      "checksum": "a77f2d36fea6700c31c24528390f81fe"
+    },
+    "www/maps/de_overpass.png": {
+      "checksum": "d6c3ff10c4d6a0907bfa2f382048c357"
+    },
+    "www/maps/de_train.png": {
+      "checksum": "9b54017a30b08dd75f2b719b8c5eaa5e"
+    },
+    "www/maps/de_train_lower.png": {
+      "checksum": "c507f014df07bc8df59df209f22ffeca"
+    },
+    "www/maps/de_vertigo.png": {
+      "checksum": "0f75867c4f8bc27ba5122a242e78e5e3"
+    },
+    "www/maps/de_vertigo_lower.png": {
+      "checksum": "9e068dc2f9d0b10d18de4c42ab5281dd"
+    },
+    "www/maps/map-data.json": {
+      "checksum": "a4c3f68f4391c6c7fb0101939367ba81"
+    },
     "www/replay.js": {
-      "checksum": "b024185ee62830c79d18e7810a3f775f"
+      "checksum": "6e8b278afefde7642395093b2782c350"
     },
     "www/styles.css": {
-      "checksum": "5ffe9b587a8ed919eaab96aedad7e6f7"
+      "checksum": "2e468725121694bf17ff071d99201afc"
     }
   },
   "users": null
