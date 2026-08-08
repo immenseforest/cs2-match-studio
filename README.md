@@ -20,11 +20,26 @@ Shiny owns the interface, analysis, tables, and charts. The Source 2 binary pars
 
    `Sys.setenv(CS2_PYTHON = "C:/path/to/python.exe")`
 
-4. Run:
+4. Run the local launcher, which opens the app in your browser:
 
-   `shiny::runApp()`
+   `Rscript run_local.R`
 
 The bundled `.dem.zst` file is loaded automatically. You can upload a `.dem` or `.dem.zst` file up to 1 GB. The first parse creates a versioned cache for that file and replay frame rate; reopening the same demo uses the cached results.
+
+## Local GIF and MP4 export
+
+1. Run `Rscript run_local.R`, then parse or load a demo.
+2. Choose a round in the left sidebar.
+3. Click **Prepare round GIF** or **Prepare round MP4**. Rendering continues in a background process, with frame-by-frame progress in the sidebar.
+4. When validation reaches 100%, click the new download button. The download itself is immediate because the media file has already been prepared.
+
+MP4 is normally much faster and smaller than GIF. Both formats contain the same radar, player movement, labels, trails, and action feed. Closing the Shiny session removes its temporary prepared exports; downloaded files are not affected.
+
+For a direct command-line export from an existing cache, run:
+
+`python python/render_replay.py "cache/<cache-folder>" 1 "round-1.mp4" --fps 8`
+
+Change the round number, output extension, or FPS as needed. The command returns a non-zero exit code if the media cannot be generated or validated.
 
 ## Features
 
@@ -37,7 +52,7 @@ The bundled `.dem.zst` file is loaded automatically. You can upload a `.dem` or 
 - Frame-synchronized team economy showing health, armour, cash, active weapon, and equipment value
 - Asynchronous parsing with stage-by-stage progress and a visible percentage bar
 - Round selection, scrubbing, playback speed, and exact event overlays
-- One-click GIF and H.264 MP4 export
+- Background GIF and H.264 MP4 preparation with live progress, validation, and immediate download
 
 ## Notes
 

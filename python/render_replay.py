@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import time
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -15,6 +17,24 @@ from PIL import Image, ImageDraw, ImageFont
 
 BG, GRID, TEXT, MUTED = "#050505", "#353535", "#f7f7f7", "#bdbdbd"
 TEAM = {2: "#ffc857", 3: "#4cc9ff"}
+
+
+def write_progress(path: Path | None, value: int, stage: str, *, complete: bool = False) -> None:
+    """Atomically publish renderer progress for a polling Shiny session."""
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"value": max(0, min(100, int(value))), "stage": stage, "complete": complete}
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload), encoding="utf-8")
+    for attempt in range(6):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            # A Windows reader can briefly lock the destination while Shiny polls it.
+            time.sleep(0.02 * (attempt + 1))
+    temporary.unlink(missing_ok=True)
 
 
 def font(size=18, bold=False):
@@ -79,8 +99,10 @@ def main() -> None:
     ap.add_argument("output")
     ap.add_argument("--fps", type=int, default=8)
     ap.add_argument("--speed", type=float, default=1.0)
+    ap.add_argument("--progress", type=Path)
     args = ap.parse_args()
     cache, output = Path(args.cache), Path(args.output)
+    write_progress(args.progress, 2, "Loading parsed round data")
     meta = json.loads((cache / "metadata.json").read_text(encoding="utf-8"))
     ticks = pd.read_csv(cache / "ticks.csv")
     ticks = ticks[ticks.round_id.eq(args.round)].sort_values("tick")
@@ -91,6 +113,7 @@ def main() -> None:
     frame_ticks = sorted(ticks.tick.unique())
     if not frame_ticks:
         raise SystemExit(f"No movement data for round {args.round}")
+    write_progress(args.progress, 6, f"Preparing {len(frame_ticks)} replay frames")
 
     width, height, panel = 960, 720, 270
     plot_w, plot_h, pad = width - panel, height, 42
@@ -129,9 +152,11 @@ def main() -> None:
     if output.suffix.lower() == ".mp4":
         writer_args.update({"codec": "libx264", "quality": 8, "pixelformat": "yuv420p"})
     output.parent.mkdir(parents=True, exist_ok=True)
+    output.unlink(missing_ok=True)
 
     with imageio.get_writer(output, **writer_args) as writer:
-        for tick in frame_ticks:
+        last_progress = -1
+        for frame_index, tick in enumerate(frame_ticks, start=1):
             im = Image.new("RGB", (width, height), BG)
             current = grouped[tick]
             chosen_radar, level_label = radar, ""
@@ -261,6 +286,21 @@ def main() -> None:
             draw.text((plot_w+18,height-56),map_name,fill=MUTED,font=font(14))
             draw.text((plot_w+18,height-34),"CS2 Match Studio",fill=MUTED,font=font(14,True))
             writer.append_data(np.asarray(im))
+            progress = 7 + int(88 * frame_index / len(frame_ticks))
+            if progress != last_progress:
+                write_progress(args.progress, progress, f"Rendering frame {frame_index:,} of {len(frame_ticks):,}")
+                last_progress = progress
+    write_progress(args.progress, 97, "Validating the finished media file")
+    if not output.exists() or output.stat().st_size <= 1024:
+        raise RuntimeError("The renderer did not create a usable media file")
+    reader = imageio.get_reader(output)
+    try:
+        first_frame = reader.get_data(0)
+        if first_frame.size == 0:
+            raise RuntimeError("The exported media contains no readable frames")
+    finally:
+        reader.close()
+    write_progress(args.progress, 100, f"{output.suffix[1:].upper()} ready to download", complete=True)
     print(json.dumps({"status":"ok","file":str(output),"frames":len(frame_ticks)}))
 
 

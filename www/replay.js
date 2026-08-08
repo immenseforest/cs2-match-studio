@@ -378,6 +378,12 @@
     requestAnimationFrame(loop);
   }
 
+  Shiny.addCustomMessageHandler("exportState",data=>{
+    ["prepare_gif","prepare_mp4"].forEach(id=>{
+      const button=$(id);if(button)button.disabled=Boolean(data&&data.active);
+    });
+  });
+
   Shiny.addCustomMessageHandler("loadReplay",data=>{
     setup();state.frames=data.frames||[];state.events=data.events||[];state.bounds=data.bounds;state.map=data.map||null;state.fps=data.fps||8;state.round=data.round;state.index=0;state.playing=false;state.trails.clear();state.level="auto";state.zoom=1;state.panX=0;state.panY=0;updateZoomUI();
     $("replay-seek").max=Math.max(0,state.frames.length-1);$("replay-seek").value=0;$("replay-play").textContent="Play";$("replay-level").value="auto";

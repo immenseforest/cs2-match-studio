@@ -56,8 +56,13 @@ ui <- fluidPage(
       actionButton("parse", "Parse demo", class="btn-primary w-100"),
       uiOutput("parse_progress"),
       tags$hr(), selectInput("round", "Round", choices = NULL),
-      tags$div(class="d-grid gap-2", downloadButton("download_gif", "Export round GIF", class="btn-secondary"), downloadButton("download_mp4", "Export round MP4", class="btn-secondary")),
-      tags$small(class="text-muted d-block mt-3", "Parsing is cached by file hash. Exports use the same replay state shown here."),
+      tags$div(class="d-grid gap-2 export-actions",
+        actionButton("prepare_gif", "Prepare round GIF", class="btn-secondary"),
+        actionButton("prepare_mp4", "Prepare round MP4", class="btn-secondary")
+      ),
+      uiOutput("export_progress"),
+      uiOutput("export_downloads"),
+      tags$small(class="text-muted d-block mt-3", "Exports render in the background. A verified download appears when the selected round is ready."),
       tags$div(class="mt-3", textOutput("status"))
     )),
     column(9, class="main-column",
@@ -123,7 +128,16 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  rv <- reactiveValues(data = NULL, status = "Ready", parse_proc = NULL, parse_out = NULL, parse_progress = NULL)
+  rv <- reactiveValues(
+    data=NULL, status="Ready", parse_proc=NULL, parse_out=NULL, parse_progress=NULL,
+    export_proc=NULL, export_format=NULL, export_file=NULL, export_progress_file=NULL,
+    export_progress=NULL, export_ready=list(gif=NULL, mp4=NULL)
+  )
+  session_token <- session$token
+  if (is.null(session_token) || !length(session_token) || is.na(session_token)) session_token <- sprintf("pid-%s", Sys.getpid())
+  session_key <- gsub("[^A-Za-z0-9_-]", "", session_token)
+  export_dir <- file.path(tempdir(), "cs2-match-studio-exports", session_key)
+  dir.create(export_dir, recursive=TRUE, showWarnings=FALSE)
 
   finish_source <- function(path) {
     data <- read_cache(path)
@@ -214,6 +228,127 @@ server <- function(input, output, session) {
         div(class="progress-fill", style=sprintf("width:%s%%", value)))
     )
   })
+  start_export <- function(format) {
+    req(rv$data, input$round)
+    format <- match.arg(format, c("gif", "mp4"))
+    if (!is.null(rv$export_proc) && rv$export_proc$is_alive()) {
+      showNotification("An export is already rendering. It can continue while you use the app.", type="message")
+      return(invisible(NULL))
+    }
+    if (is.na(python_bin) || !nzchar(python_bin)) {
+      showNotification("Python is unavailable. Set CS2_PYTHON to the Python used for this project.", type="error", duration=NULL)
+      return(invisible(NULL))
+    }
+
+    selected_round <- as.integer(input$round)
+    map_name <- as.character(rv$data$metadata$map_name)
+    if (!length(map_name) || is.na(map_name) || !nzchar(map_name)) map_name <- "match"
+    safe_map <- gsub("[^A-Za-z0-9_-]+", "-", map_name)
+    output_file <- file.path(export_dir, sprintf("%s-round-%s.%s", safe_map, selected_round, format))
+    progress_file <- paste0(output_file, ".progress.json")
+    stdout_file <- paste0(output_file, ".stdout.log")
+    stderr_file <- paste0(output_file, ".stderr.log")
+    unlink(c(output_file, progress_file, stdout_file, stderr_file), force=TRUE)
+
+    ready <- rv$export_ready
+    ready[[format]] <- NULL
+    rv$export_ready <- ready
+    rv$export_format <- format
+    rv$export_file <- output_file
+    rv$export_progress_file <- progress_file
+    rv$export_progress <- list(value=1L, stage=sprintf("Starting round %s %s export", selected_round, toupper(format)), complete=FALSE)
+    session$sendCustomMessage("exportState", list(active=TRUE))
+
+    visual_fps <- suppressWarnings(as.integer(rv$data$metadata$visual_fps))
+    if (!length(visual_fps) || is.na(visual_fps) || visual_fps < 1L) visual_fps <- 8L
+    rv$export_proc <- tryCatch(
+      processx::process$new(
+        python_bin,
+        args=c(
+          file.path(root, "python", "render_replay.py"), rv$data$path,
+          as.character(selected_round), output_file,
+          "--fps", as.character(visual_fps), "--progress", progress_file
+        ),
+        stdout=stdout_file, stderr=stderr_file,
+        cleanup=TRUE, windows_hide_window=TRUE
+      ),
+      error=function(e) {
+        rv$export_progress <- list(value=0L, stage=paste("Unable to start export:", conditionMessage(e)), complete=FALSE, failed=TRUE)
+        session$sendCustomMessage("exportState", list(active=FALSE))
+        NULL
+      }
+    )
+  }
+
+  observeEvent(input$prepare_gif, start_export("gif"))
+  observeEvent(input$prepare_mp4, start_export("mp4"))
+
+  observe({
+    invalidateLater(400, session)
+    proc <- rv$export_proc
+    if (is.null(proc)) return()
+
+    progress_file <- rv$export_progress_file
+    if (!is.null(progress_file) && file.exists(progress_file)) {
+      progress <- tryCatch(fromJSON(progress_file, simplifyVector=TRUE), error=function(e) NULL)
+      if (!is.null(progress)) {
+        value <- if (is.null(progress$value)) 1L else as.integer(progress$value)
+        stage <- if (is.null(progress$stage)) "Rendering replay" else as.character(progress$stage)
+        rv$export_progress <- list(value=value, stage=stage, complete=isTRUE(progress$complete))
+      }
+    }
+    if (proc$is_alive()) return()
+
+    exit_status <- proc$get_exit_status()
+    format <- rv$export_format
+    output_file <- rv$export_file
+    rv$export_proc <- NULL
+    session$sendCustomMessage("exportState", list(active=FALSE))
+    if (identical(exit_status, 0L) && file.exists(output_file) && file.info(output_file)$size > 1024) {
+      ready <- rv$export_ready
+      ready[[format]] <- list(
+        path=output_file,
+        round=as.integer(sub(".*-round-([0-9]+)\\..*", "\\1", basename(output_file))),
+        map=as.character(rv$data$metadata$map_name),
+        bytes=as.numeric(file.info(output_file)$size)
+      )
+      rv$export_ready <- ready
+      rv$export_progress <- list(value=100L, stage=sprintf("%s ready to download", toupper(format)), complete=TRUE)
+      showNotification(sprintf("Round %s %s export is ready.", ready[[format]]$round, toupper(format)), type="message")
+    } else {
+      stderr_file <- paste0(output_file, ".stderr.log")
+      detail <- if (file.exists(stderr_file)) paste(tail(readLines(stderr_file, warn=FALSE), 8), collapse=" ") else "Renderer stopped unexpectedly"
+      rv$export_progress <- list(value=0L, stage=paste("Export failed:", detail), complete=FALSE, failed=TRUE)
+      showNotification("Replay export failed. See the export status for details.", type="error", duration=NULL)
+    }
+  })
+
+  output$export_progress <- renderUI({
+    p <- rv$export_progress
+    if (is.null(p)) return(NULL)
+    value <- max(0L, min(100L, as.integer(p$value)))
+    div(class=paste("parse-progress export-progress", if (isTRUE(p$complete)) "complete" else "", if (isTRUE(p$failed)) "failed" else ""),
+      div(class="parse-progress-copy", tags$span(p$stage), tags$strong(sprintf("%s%%", value))),
+      div(class="progress-track", role="progressbar", `aria-valuemin`="0", `aria-valuemax`="100", `aria-valuenow`=value,
+        div(class="progress-fill", style=sprintf("width:%s%%", value)))
+    )
+  })
+
+  output$export_downloads <- renderUI({
+    ready <- rv$export_ready
+    available <- names(ready)[vapply(ready, function(item) !is.null(item) && file.exists(item$path), logical(1))]
+    if (!length(available)) return(NULL)
+    div(class="export-downloads",
+      lapply(available, function(format) {
+        item <- ready[[format]]
+        div(
+          downloadButton(paste0("download_", format), sprintf("Download round %s %s", item$round, toupper(format)), class="btn-primary w-100"),
+          tags$small(sprintf("Verified file · %.1f MB", item$bytes / 1024^2))
+        )
+      })
+    )
+  })
+
   output$match_subtitle <- renderText({
     if (is.null(rv$data)) return("Drop in a .dem or .dem.zst file to begin")
     m <- rv$data$metadata
@@ -487,15 +622,31 @@ server <- function(input, output, session) {
     datatable(e, rownames=FALSE, filter="top", options=list(pageLength=20, scrollX=TRUE), class="compact stripe")
   })
 
-  export_round <- function(file, ext) {
-    req(rv$data, input$round)
-    out <- paste0(file, ext)
-    result <- system2(python_bin, c(shQuote(file.path(root,"python","render_replay.py")), shQuote(rv$data$path), as.integer(input$round), shQuote(out), "--fps", 8), stdout=TRUE, stderr=TRUE)
-    if (!file.exists(out)) stop(paste(result, collapse="\n"))
-    file.copy(out, file, overwrite=TRUE)
+  ready_export <- function(format) {
+    item <- rv$export_ready[[format]]
+    req(!is.null(item), file.exists(item$path))
+    item
   }
-  output$download_gif <- downloadHandler(filename=function() sprintf("%s-round-%s.gif", rv$data$metadata$map_name,input$round), content=function(file) export_round(file,".gif"))
-  output$download_mp4 <- downloadHandler(filename=function() sprintf("%s-round-%s.mp4", rv$data$metadata$map_name,input$round), content=function(file) export_round(file,".mp4"))
+  output$download_gif <- downloadHandler(
+    filename=function() basename(ready_export("gif")$path),
+    contentType="image/gif",
+    content=function(file) {
+      if (!file.copy(ready_export("gif")$path, file, overwrite=TRUE)) stop("Unable to copy the prepared GIF")
+    }
+  )
+  output$download_mp4 <- downloadHandler(
+    filename=function() basename(ready_export("mp4")$path),
+    contentType="video/mp4",
+    content=function(file) {
+      if (!file.copy(ready_export("mp4")$path, file, overwrite=TRUE)) stop("Unable to copy the prepared MP4")
+    }
+  )
+
+  session$onSessionEnded(function() {
+    proc <- isolate(rv$export_proc)
+    if (!is.null(proc) && proc$is_alive()) proc$kill()
+    if (dir.exists(export_dir)) unlink(export_dir, recursive=TRUE, force=TRUE)
+  })
 }
 
 shinyApp(ui, server)

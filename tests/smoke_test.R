@@ -29,6 +29,29 @@ shiny::testServer(app_env$server, {
   )
   stopifnot(nchar(output$kill_survival_scatter) > 100)
   stopifnot(nchar(output$player_round_profile) > 100)
+
+  session$setInputs(round="1", prepare_mp4=1)
+  export_deadline <- Sys.time() + 60
+  while (is.null(isolate(rv$export_ready$mp4)) && Sys.time() < export_deadline) {
+    Sys.sleep(0.25)
+    session$elapse(500)
+  }
+  export_ready <- isolate(rv$export_ready$mp4)
+  export_progress <- isolate(rv$export_progress)
+  if (is.null(export_ready)) {
+    export_proc <- isolate(rv$export_proc)
+    message("Export debug: progress=", paste(capture.output(str(export_progress)), collapse=" "))
+    message("Export debug: file=", isolate(rv$export_file), " proc=", !is.null(export_proc), " alive=", !is.null(export_proc) && export_proc$is_alive())
+    stderr_file <- paste0(isolate(rv$export_file), ".stderr.log")
+    if (file.exists(stderr_file)) message("Export stderr: ", paste(readLines(stderr_file, warn=FALSE), collapse=" "))
+  }
+  stopifnot(
+    !is.null(export_ready),
+    file.exists(export_ready$path),
+    file.info(export_ready$path)$size > 1024,
+    isTRUE(export_progress$complete),
+    nchar(output$export_downloads) > 50
+  )
 })
 
-cat("Shiny UI, player metrics, and parsed-cache smoke test passed.\n")
+cat("Shiny UI, player metrics, background export, and parsed-cache smoke test passed.\n")
